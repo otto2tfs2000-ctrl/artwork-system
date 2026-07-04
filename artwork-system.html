@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>玩劇寶貝｜作品確認系統</title>
+<!-- Firebase compat SDK（同步載入，避免按鈕失效問題） -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F7F4EE;
+  --card:#FFFFFF;
+  --ink:#2B2824;
+  --ink-soft:#6E675E;
+  --line:#E5DFD5;
+  --paint:#3B6FB5;      /* 繪畫 */
+  --paint-bg:#EAF1FA;
+  --clay:#C4703E;       /* 黏土 */
+  --clay-bg:#FAEEE4;
+  --ok:#4A8F5C;         /* 已領取 */
+  --ok-bg:#E9F4EC;
+  --warn:#B98A1E;       /* 已通知 */
+  --warn-bg:#FBF3DD;
+  --pending:#8A8378;    /* 待處理 */
+  --pending-bg:#F0EDE7;
+  --danger:#B5493B;
+  --radius:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Noto Sans TC',system-ui,sans-serif;background:var(--paper);color:var(--ink);padding-bottom:60px}
+header{background:var(--card);border-bottom:2px solid var(--line);padding:14px 16px;position:sticky;top:0;z-index:50}
+.header-inner{max-width:1080px;margin:0 auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+h1{font-size:19px;font-weight:900;letter-spacing:.5px}
+h1 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:2px}
+h1 .dot.b{background:var(--paint)} h1 .dot.o{background:var(--clay)}
+#connStatus{margin-left:auto;font-size:12px;padding:4px 10px;border-radius:20px;background:var(--pending-bg);color:var(--pending);font-weight:500}
+#connStatus.on{background:var(--ok-bg);color:var(--ok)}
+#connStatus.off{background:#FBE7E4;color:var(--danger)}
+.wrap{max-width:1080px;margin:0 auto;padding:14px 12px}
+/* 統計卡 */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 8px;text-align:center;cursor:pointer;transition:transform .1s}
+.stat:active{transform:scale(.97)}
+.stat .num{font-size:24px;font-weight:900}
+.stat .lbl{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.stat.s-all .num{color:var(--ink)}
+.stat.s-pending .num{color:var(--pending)}
+.stat.s-notified .num{color:var(--warn)}
+.stat.s-taken .num{color:var(--ok)}
+/* 分頁 */
+.tabs{display:flex;gap:6px;margin-bottom:14px;overflow-x:auto}
+.tab{flex:1;min-width:90px;padding:10px 6px;border:1px solid var(--line);background:var(--card);border-radius:var(--radius);font-size:14px;font-weight:700;color:var(--ink-soft);cursor:pointer;text-align:center;white-space:nowrap}
+.tab.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.page{display:none}
+.page.active{display:block}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+.card h2{font-size:15px;font-weight:900;margin-bottom:10px;display:flex;align-items:center;gap:6px}
+.hint{font-size:12px;color:var(--ink-soft);line-height:1.6;margin-bottom:8px}
+label{font-size:13px;font-weight:700;display:block;margin:8px 0 4px}
+input[type=text],input[type=date],select,textarea{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:10px;font-size:15px;font-family:inherit;background:#fff}
+textarea{min-height:110px;resize:vertical}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--paint);outline-offset:0;border-color:transparent}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1;min-width:130px}
+button{font-family:inherit;cursor:pointer;border:none;border-radius:10px;font-weight:700}
+.btn{padding:10px 16px;font-size:14px;background:var(--ink);color:#fff;margin-top:10px}
+.btn.blue{background:var(--paint)} .btn.orange{background:var(--clay)}
+.btn.ghost{background:#fff;border:1px solid var(--line);color:var(--ink)}
+.btn:active{opacity:.85}
+.btn-sm{padding:5px 10px;font-size:12px;border-radius:8px}
+.btn-notify{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn)}
+.btn-take{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok)}
+.btn-del{background:#fff;color:var(--danger);border:1px solid #EBC9C4}
+.btn-undo{background:#fff;color:var(--ink-soft);border:1px solid var(--line)}
+/* 類型與狀態貼紙 */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:12px;font-weight:700;margin:1px 0}
+.multi{display:inline-block;background:var(--danger);color:#fff;font-size:11px;font-weight:900;padding:1px 7px;border-radius:20px;vertical-align:middle}
+.badge::before{content:'';width:7px;height:7px;border-radius:50%;background:currentColor}
+.t-paint{background:var(--paint-bg);color:var(--paint)}
+.t-clay{background:var(--clay-bg);color:var(--clay)}
+.st-pending{background:var(--pending-bg);color:var(--pending)}
+.st-notified{background:var(--warn-bg);color:var(--warn)}
+.st-taken{background:var(--ok-bg);color:var(--ok)}
+/* 清單 */
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{text-align:left;font-size:12px;color:var(--ink-soft);padding:6px 6px;border-bottom:2px solid var(--line);white-space:nowrap}
+td{padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.name{font-weight:700;font-size:15px}
+.sub{font-size:12px;color:var(--ink-soft)}
+.actions{display:flex;gap:5px;flex-wrap:wrap}
+.empty{text-align:center;color:var(--ink-soft);padding:26px 10px;font-size:14px}
+/* 比對結果 */
+.match-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.match-head .cnt{font-size:13px;font-weight:900;padding:2px 10px;border-radius:20px}
+.g-come .cnt{background:var(--ok-bg);color:var(--ok)}
+.g-nocome .cnt{background:var(--warn-bg);color:var(--warn)}
+.chiprow{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+.chip{padding:5px 12px;border-radius:20px;border:1px solid var(--line);background:#fff;font-size:13px;font-weight:700;color:var(--ink-soft);cursor:pointer}
+.chip.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.search{margin-bottom:10px}
+.toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 20px;border-radius:24px;font-size:14px;font-weight:700;opacity:0;transition:opacity .25s;pointer-events:none;z-index:100;max-width:90%}
+.toast.show{opacity:1}
+.filebox{border:2px dashed var(--line);border-radius:10px;padding:14px;text-align:center;font-size:13px;color:var(--ink-soft);margin-top:6px}
+.roster-info{font-size:13px;color:var(--ink-soft);margin-bottom:8px}
+.roster-info b{color:var(--ink)}
+@media(max-width:640px){
+  .stats{grid-template-columns:repeat(4,1fr)}
+  .stat .num{font-size:20px}
+  th.hide-m,td.hide-m{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="header-inner">
+    <h1><span class="dot b"></span><span class="dot o"></span> 玩劇寶貝 作品確認系統</h1>
+    <span id="connStatus">連線中…</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <!-- 統計 -->
+  <div class="stats">
+    <div class="stat s-all" onclick="gotoTrack('all')"><div class="num" id="stAll">0</div><div class="lbl">總作品</div></div>
+    <div class="stat s-pending" onclick="gotoTrack('pending')"><div class="num" id="stPending">0</div><div class="lbl">待處理</div></div>
+    <div class="stat s-notified" onclick="gotoTrack('notified')"><div class="num" id="stNotified">0</div><div class="lbl">已通知</div></div>
+    <div class="stat s-taken" onclick="gotoTrack('taken')"><div class="num" id="stTaken">0</div><div class="lbl">已領取</div></div>
+  </div>
+
+  <!-- 分頁 -->
+  <div class="tabs">
+    <div class="tab active" data-page="register" onclick="switchTab('register')">📝 作品登記</div>
+    <div class="tab" data-page="match" onclick="switchTab('match')">🔍 名單比對</div>
+    <div class="tab" data-page="track" onclick="switchTab('track')">📋 領取追蹤</div>
+  </div>
+
+  <!-- ============ 作品登記 ============ -->
+  <div class="page active" id="page-register">
+    <div class="card">
+      <h2>批次登記作品</h2>
+      <div class="hint">一行一位小朋友，可直接貼上名單。整批同一位老師時，老師欄填一次即可；也可用「姓名,老師」逐行指定（會覆蓋整批設定）。同一個小朋友在不同老師有作品，就分批登記或分行指定，系統會各存一筆。</div>
+      <textarea id="regNames" placeholder="例如：&#10;王小明&#10;陳小美,布丁老師&#10;林小寶"></textarea>
+      <div class="row">
+        <div>
+          <label>作品類型</label>
+          <select id="regType">
+            <option value="paint">🎨 繪畫</option>
+            <option value="clay">🟤 黏土</option>
+          </select>
+        </div>
+        <div>
+          <label>老師（套用整批）</label>
+          <input type="text" id="regTeacher" list="teacherList" placeholder="例：米雪老師">
+          <datalist id="teacherList"></datalist>
+        </div>
+        <div>
+          <label>課程／班別（選填，套用整批）</label>
+          <input type="text" id="regCourse" placeholder="例：週六A 4-5畫畫">
+        </div>
+        <div>
+          <label>整理日期</label>
+          <input type="date" id="regDate">
+        </div>
+      </div>
+      <button class="btn blue" onclick="batchRegister()">＋ 批次登記</button>
+    </div>
+
+    <div class="card">
+      <h2>匯入作品名單 CSV / Excel</h2>
+      <div class="hint">支援 <b>CSV 和 Excel（.xlsx）</b>。有標題列時自動對應「姓名、類型、老師、課程、備註」欄；沒有標題列則照此順序讀。類型欄含「黏土」判定為黏土，其餘視為繪畫。同一位小朋友不同老師的作品請分成多列。</div>
+      <div class="filebox">
+        <input type="file" id="csvWorks" accept=".csv,.txt,.xlsx,.xls" onchange="importWorksCSV(this)">
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 名單比對 ============ -->
+  <div class="page" id="page-match">
+    <div class="card">
+      <h2>近期上課名單</h2>
+      <div class="roster-info">目前名單：<b id="rosterCount">0</b> 位小朋友 <button class="btn-sm btn-del" style="margin-left:8px" onclick="clearRoster()">清空名單</button></div>
+      <div class="hint">貼上近期會來上課的小朋友（一行一位，可用「姓名,課程,時間」格式），或匯入 <b>CSV / Excel</b>。系統會自動找「姓名」欄（也認得課程、時間、星期欄），Excel 多個工作表會全部讀進來，重複的自動去重。</div>
+      <textarea id="rosterInput" placeholder="例如：&#10;王小明,週六A 4-5畫畫&#10;陳小美&#10;林小寶,週日 2-3黏土"></textarea>
+      <div class="row">
+        <button class="btn" onclick="importRosterText()">＋ 加入名單</button>
+        <div class="filebox" style="margin-top:10px;flex:2">
+          <input type="file" id="csvRoster" accept=".csv,.txt,.xlsx,.xls" onchange="importRosterCSV(this)">
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="match-head g-come"><h2>✅ 有作品・近期會來上課</h2><span class="cnt" id="cntCome">0</span></div>
+      <div class="hint">可以直接在課堂發還、請家長確認。</div>
+      <div id="listCome"></div>
+    </div>
+
+    <div class="card">
+      <div class="match-head g-nocome"><h2>⚠️ 有作品・近期沒有課</h2><span class="cnt" id="cntNoCome">0</span></div>
+      <div class="hint">需要另外通知家長來取（可匯出名單發 Line）。</div>
+      <button class="btn ghost btn-sm" style="margin:0 0 10px" onclick="exportNotifyList()">📤 匯出通知名單 CSV</button>
+      <div id="listNoCome"></div>
+    </div>
+  </div>
+
+  <!-- ============ 領取追蹤 ============ -->
+  <div class="page" id="page-track">
+    <div class="card">
+      <h2>作品領取追蹤</h2>
+      <div class="chiprow" id="statusChips">
+        <div class="chip active" data-f="all" onclick="setFilter('all')">全部</div>
+        <div class="chip" data-f="pending" onclick="setFilter('pending')">待處理</div>
+        <div class="chip" data-f="notified" onclick="setFilter('notified')">已通知</div>
+        <div class="chip" data-f="taken" onclick="setFilter('taken')">已領取</div>
+      </div>
+      <div class="chiprow">
+        <div class="chip active" data-t="all" onclick="setTypeFilter('all')">全部類型</div>
+        <div class="chip" data-t="paint" onclick="setTypeFilter('paint')">🎨 繪畫</div>
+        <div class="chip" data-t="clay" onclick="setTypeFilter('clay')">🟤 黏土</div>
+      </div>
+      <div class="chiprow" id="teacherChips"></div>
+      <input type="text" class="search" id="searchName" placeholder="🔍 搜尋姓名…" oninput="renderTrack()">
+      <div id="trackList"></div>
+      <button class="btn ghost" onclick="exportAllCSV()">📤 匯出全部作品 CSV</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ========================================================
+   Firebase 設定（otto2-2026，asia-southeast1）
+   路徑隔離：本系統只讀寫 artwork/ 底下，不影響其他系統
+   ======================================================== */
+var firebaseConfig = {
+  databaseURL: "https://otto2-2026-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+var db = null;
+var fbReady = false;
+var works = {};    // {id: {name, type, course, date, note, status, createdAt, notifiedAt, takenAt}}
+var roster = {};   // {id: {name, course, time}}
+var statusFilter = 'all';
+var typeFilter = 'all';
+var teacherFilter = 'all';
+
+/* 同一個小朋友（未領取）共有幾件作品 */
+function countWorks(name){
+  var n = normName(name), c = 0;
+  Object.keys(works).forEach(function(id){
+    if(normName(works[id].name) === n && works[id].status !== 'taken') c++;
+  });
+  return c;
+}
+
+/* ---------- 工具 ---------- */
+function normName(s){ return (s||'').replace(/\s+/g,'').trim(); }
+function genId(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function todayStr(){
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function esc(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function toast(msg){
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+function setConn(state, text){
+  var el = document.getElementById('connStatus');
+  el.className = state;
+  el.textContent = text;
+}
+
+/* ---------- Firebase 初始化 ---------- */
+function initFirebase(){
+  try{
+    firebase.initializeApp(firebaseConfig);
+    db = firebase.database();
+
+    db.ref('.info/connected').on('value', function(snap){
+      if(snap.val() === true){ setConn('on', '☁️ 已同步'); }
+      else { setConn('off', '離線'); }
+    });
+
+    // 作品資料：所有寫入都是逐筆 set，全量監聽是安全的
+    db.ref('artwork/works').on('value', function(snap){
+      works = snap.val() || {};
+      fbReady = true;
+      renderAll();
+    });
+
+    // 上課名單
+    db.ref('artwork/roster').on('value', function(snap){
+      roster = snap.val() || {};
+      renderAll();
+    });
+  }catch(e){
+    console.error('Firebase 初始化失敗', e);
+    setConn('off', '⚠️ 未連線（本機模式）');
+    fbReady = false;
+  }
+}
+
+/* ---------- 寫入（逐筆，避免整包覆蓋） ---------- */
+function saveWork(id, obj){
+  works[id] = obj;
+  if(db){ db.ref('artwork/works/' + id).set(obj); }
+  renderAll();
+}
+function updateWork(id, patch){
+  if(!works[id]) return;
+  for(var k in patch){ works[id][k] = patch[k]; }
+  if(db){ db.ref('artwork/works/' + id).update(patch); }
+  renderAll();
+}
+function deleteWork(id){
+  if(!confirm('確定刪除「' + (works[id] ? works[id].name : '') + '」的作品紀錄？')) return;
+  delete works[id];
+  if(db){ db.ref('artwork/works/' + id).remove(); }
+  renderAll();
+  toast('已刪除');
+}
+function saveRosterItem(id, obj){
+  roster[id] = obj;
+  if(db){ db.ref('artwork/roster/' + id).set(obj); }
+}
+function clearRoster(){
+  if(!confirm('確定清空「近期上課名單」？（不會影響作品資料）')) return;
+  roster = {};
+  if(db){ db.ref('artwork/roster').remove(); }
+  renderAll();
+  toast('名單已清空');
+}
+
+/* ---------- 分頁 ---------- */
+function switchTab(page){
+  document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.page === page); });
+  document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('active', p.id === 'page-' + page); });
+}
+function gotoTrack(filter){
+  switchTab('track');
+  setFilter(filter);
+}
+function setFilter(f){
+  statusFilter = f;
+  document.querySelectorAll('#statusChips .chip').forEach(function(c){ c.classList.toggle('active', c.dataset.f === f); });
+  renderTrack();
+}
+function setTypeFilter(t){
+  typeFilter = t;
+  document.querySelectorAll('.chip[data-t]').forEach(function(c){ c.classList.toggle('active', c.dataset.t === t); });
+  renderTrack();
+}
+function setTeacherFilter(t){
+  teacherFilter = t;
+  renderTeacherChips();
+  renderTrack();
+}
+function getTeachers(){
+  var set = {};
+  Object.keys(works).forEach(function(id){
+    var t = (works[id].teacher || '').trim();
+    if(t) set[t] = true;
+  });
+  return Object.keys(set).sort(function(a,b){ return a.localeCompare(b, 'zh-Hant'); });
+}
+function renderTeacherChips(){
+  var teachers = getTeachers();
+  var el = document.getElementById('teacherChips');
+  if(!teachers.length){ el.innerHTML = ''; return; }
+  var html = '<div class="chip' + (teacherFilter === 'all' ? ' active' : '') + '" onclick="setTeacherFilter(\'all\')">全部老師</div>';
+  teachers.forEach(function(t){
+    var c = teacherColor(t);
+    var active = teacherFilter === t;
+    html += '<div class="chip' + (active ? ' active' : '') + '"' +
+      (active ? '' : ' style="background:' + c[0] + ';color:' + c[1] + ';border-color:' + c[0] + '"') +
+      ' onclick="setTeacherFilter(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + esc(t) + '</div>';
+  });
+  el.innerHTML = html;
+}
+function renderTeacherDatalist(){
+  var dl = document.getElementById('teacherList');
+  dl.innerHTML = getTeachers().map(function(t){ return '<option value="' + esc(t) + '">'; }).join('');
+}
+
+/* ---------- 批次登記 ---------- */
+function batchRegister(){
+  var raw = document.getElementById('regNames').value.trim();
+  if(!raw){ toast('請先輸入名單'); return; }
+  var type = document.getElementById('regType').value;
+  var teacherAll = document.getElementById('regTeacher').value.trim();
+  var courseAll = document.getElementById('regCourse').value.trim();
+  var date = document.getElementById('regDate').value || todayStr();
+
+  var lines = raw.split(/\r?\n/);
+  var added = 0, skipped = 0;
+  lines.forEach(function(line){
+    line = line.trim();
+    if(!line) return;
+    var parts = line.split(/[,，\t]/).map(function(x){ return x.trim(); });
+    var name = normName(parts[0]);
+    if(!name) return;
+    var teacher = parts[1] || teacherAll;  // 逐行指定老師優先
+    var course = parts[2] || courseAll;
+    // 同名 + 同類型 + 同老師 + 未領取 → 視為重複，跳過
+    // （同一小朋友在「不同老師」的作品會各存一筆）
+    var dup = Object.keys(works).some(function(id){
+      var w = works[id];
+      return normName(w.name) === name && w.type === type &&
+             (w.teacher || '') === teacher && w.status !== 'taken';
+    });
+    if(dup){ skipped++; return; }
+    var id = genId() + added;
+    saveWork(id, {
+      name: name, type: type, teacher: teacher || '', course: course || '', date: date,
+      status: 'pending', note: '', createdAt: Date.now()
+    });
+    added++;
+  });
+  document.getElementById('regNames').value = '';
+  toast('✅ 已登記 ' + added + ' 筆' + (skipped ? '，跳過重複 ' + skipped + ' 筆' : ''));
+}
+
+/* ---------- CSV / Excel 解析 ---------- */
+function readSheet(input, cb){
+  var file = input.files[0];
+  if(!file) return;
+  var isExcel = /\.(xlsx|xls)$/i.test(file.name);
+  var reader = new FileReader();
+  reader.onload = function(e){
+    var rows = [];
+    try{
+      if(isExcel){
+        var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        // 讀取所有工作表並合併（例如依課程分頁的出席表）
+        wb.SheetNames.forEach(function(sn){
+          var sheetRows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
+          sheetRows.forEach(function(r){
+            rows.push(r.map(function(c){ return String(c == null ? '' : c).trim(); }));
+          });
+        });
+      }else{
+        var text = e.target.result.replace(/^\uFEFF/, ''); // 去 BOM
+        rows = text.split(/\r?\n/).map(function(line){
+          return line.split(/[,，\t]/).map(function(x){ return x.trim().replace(/^"|"$/g,''); });
+        });
+      }
+    }catch(err){
+      console.error('檔案解析失敗', err);
+      toast('⚠️ 檔案解析失敗，請確認格式');
+      input.value = '';
+      return;
+    }
+    rows = rows.filter(function(r){ return r.some(function(c){ return c; }); });
+    cb(rows);
+    input.value = '';
+  };
+  if(isExcel){ reader.readAsArrayBuffer(file); }
+  else{ reader.readAsText(file, 'utf-8'); }
+}
+function looksLikeHeader(row){
+  return /姓名|名字|學生|name/i.test(row[0]);
+}
+/* 自動偵測欄位：在前幾列找標題列（含「姓名/學生」），
+   並順便找課程、時間、家長欄位；找不到就當第一欄是姓名 */
+function detectColumns(rows){
+  for(var i = 0; i < Math.min(rows.length, 6); i++){
+    for(var j = 0; j < rows[i].length; j++){
+      if(/姓名|學生姓名|學生|名字|name/i.test(rows[i][j])){
+        var findCol = function(re){
+          for(var k = 0; k < rows[i].length; k++){
+            if(re.test(rows[i][k])) return k;
+          }
+          return -1;
+        };
+        return {
+          headerRow: i,
+          nameCol: j,
+          courseCol: findCol(/課程|班別|課別|科目/),
+          timeCol: findCol(/時間|星期|時段|日期/),
+          typeCol: findCol(/類型|作品/),
+          teacherCol: findCol(/老師|教師|授課/),
+          noteCol: findCol(/備註|說明/)
+        };
+      }
+    }
+  }
+  // 沒有標題列：照預設欄位順序
+  return { headerRow: -1, nameCol: 0, courseCol: -1, timeCol: -1, typeCol: -1, teacherCol: -1, noteCol: -1 };
+}
+function cellOf(row, col){ return col >= 0 ? (row[col] || '') : ''; }
+
+function importWorksCSV(input){
+  readSheet(input, function(rows){
+    if(!rows.length){ toast('檔案沒有資料'); return; }
+    var m = detectColumns(rows);
+    var added = 0, skipped = 0;
+    rows.forEach(function(r, i){
+      if(i <= m.headerRow) return;                       // 跳過標題列
+      if(/姓名|學生|名字|name/i.test(r[m.nameCol])) return; // 跳過重複出現的標題（多工作表）
+      var name = normName(r[m.nameCol]);
+      if(!name) return;
+      var typeRaw = m.typeCol >= 0 ? cellOf(r, m.typeCol) : (r[1] || '');
+      var type = /黏土|clay/i.test(typeRaw) ? 'clay' : 'paint';
+      var teacher = (m.teacherCol >= 0 ? cellOf(r, m.teacherCol) : (m.headerRow < 0 ? (r[2] || '') : '')).trim();
+      var course = m.courseCol >= 0 ? cellOf(r, m.courseCol) : (m.headerRow < 0 ? (r[3] || '') : '');
+      var note = m.noteCol >= 0 ? cellOf(r, m.noteCol) : (m.headerRow < 0 ? (r[4] || '') : '');
+      var dup = Object.keys(works).some(function(id){
+        var w = works[id];
+        return normName(w.name) === name && w.type === type &&
+               (w.teacher || '') === teacher && w.status !== 'taken';
+      });
+      if(dup){ skipped++; return; }
+      saveWork(genId() + i, {
+        name: name, type: type, teacher: teacher, course: course, date: todayStr(),
+        status: 'pending', note: note, createdAt: Date.now()
+      });
+      added++;
+    });
+    toast('✅ 匯入 ' + added + ' 筆作品' + (skipped ? '，跳過重複 ' + skipped + ' 筆' : ''));
+  });
+}
+
+/* ---------- 上課名單 ---------- */
+function addRosterRows(rows){
+  var existing = {};
+  Object.keys(roster).forEach(function(id){ existing[normName(roster[id].name)] = true; });
+  var added = 0;
+  rows.forEach(function(r, i){
+    var name = normName(r[0]);
+    if(!name || existing[name]) return;
+    existing[name] = true;
+    saveRosterItem(genId() + 'r' + i, { name: name, course: r[1] || '', time: r[2] || '' });
+    added++;
+  });
+  renderAll();
+  return added;
+}
+function importRosterText(){
+  var raw = document.getElementById('rosterInput').value.trim();
+  if(!raw){ toast('請先貼上名單'); return; }
+  var rows = raw.split(/\r?\n/).map(function(line){
+    return line.split(/[,，\t]/).map(function(x){ return x.trim(); });
+  }).filter(function(r){ return r[0]; });
+  var added = addRosterRows(rows);
+  document.getElementById('rosterInput').value = '';
+  toast('✅ 名單加入 ' + added + ' 位');
+}
+function importRosterCSV(input){
+  readSheet(input, function(rows){
+    if(!rows.length){ toast('檔案沒有資料'); return; }
+    var m = detectColumns(rows);
+    var mapped = [];
+    rows.forEach(function(r, i){
+      if(i <= m.headerRow) return;
+      if(/姓名|學生|名字|name/i.test(r[m.nameCol])) return; // 多工作表重複標題
+      var name = r[m.nameCol];
+      if(!name) return;
+      mapped.push([
+        name,
+        m.courseCol >= 0 ? cellOf(r, m.courseCol) : (m.headerRow < 0 ? (r[1] || '') : ''),
+        m.timeCol >= 0 ? cellOf(r, m.timeCol) : (m.headerRow < 0 ? (r[2] || '') : '')
+      ]);
+    });
+    var added = addRosterRows(mapped);
+    toast('✅ 名單匯入 ' + added + ' 位' + (mapped.length - added > 0 ? '（自動去重 ' + (mapped.length - added) + ' 筆）' : ''));
+  });
+}
+
+/* ---------- 比對 ---------- */
+function getMatchGroups(){
+  var rosterMap = {};
+  Object.keys(roster).forEach(function(id){
+    rosterMap[normName(roster[id].name)] = roster[id];
+  });
+  var come = [], nocome = [];
+  Object.keys(works).forEach(function(id){
+    var w = works[id];
+    if(w.status === 'taken') return; // 已領取不再列入比對
+    var item = { id: id, w: w, rosterInfo: rosterMap[normName(w.name)] || null };
+    if(item.rosterInfo) come.push(item);
+    else nocome.push(item);
+  });
+  var byName = function(a,b){ return a.w.name.localeCompare(b.w.name, 'zh-Hant'); };
+  come.sort(byName); nocome.sort(byName);
+  return { come: come, nocome: nocome };
+}
+
+function typeBadge(t){
+  return t === 'clay' ? '<span class="badge t-clay">黏土</span>' : '<span class="badge t-paint">繪畫</span>';
+}
+/* 老師徽章：同一位老師固定同一個顏色，掃一眼就知道去哪領 */
+var TEACHER_COLORS = [
+  ['#EDE7F8','#6B4FA3'], ['#E4F3F5','#2E7E8A'], ['#FBEAF0','#A94468'],
+  ['#EFF5E4','#5C7E2E'], ['#FDF0E0','#A9652B'], ['#E8ECF8','#4A5CA8'],
+  ['#F5E9E4','#8A5A3E'], ['#E4F5EC','#2E8A5C']
+];
+function teacherColor(name){
+  var h = 0;
+  for(var i = 0; i < name.length; i++){ h = (h * 31 + name.charCodeAt(i)) >>> 0; }
+  return TEACHER_COLORS[h % TEACHER_COLORS.length];
+}
+function teacherBadge(name){
+  if(!name) return '<span class="sub">（未填老師）</span>';
+  var c = teacherColor(name);
+  return '<span class="badge" style="background:' + c[0] + ';color:' + c[1] + '">👩‍🏫 ' + esc(name) + '</span>';
+}
+function statusBadge(s){
+  if(s === 'taken') return '<span class="badge st-taken">已領取</span>';
+  if(s === 'notified') return '<span class="badge st-notified">已通知</span>';
+  return '<span class="badge st-pending">待處理</span>';
+}
+function actionBtns(id, w){
+  var html = '<div class="actions">';
+  if(w.status === 'pending'){
+    html += '<button class="btn-sm btn-notify" onclick="updateWork(\'' + id + '\',{status:\'notified\',notifiedAt:Date.now()})">📣 已通知</button>';
+    html += '<button class="btn-sm btn-take" onclick="updateWork(\'' + id + '\',{status:\'taken\',takenAt:Date.now()})">✔ 已領取</button>';
+  }else if(w.status === 'notified'){
+    html += '<button class="btn-sm btn-take" onclick="updateWork(\'' + id + '\',{status:\'taken\',takenAt:Date.now()})">✔ 已領取</button>';
+    html += '<button class="btn-sm btn-undo" onclick="updateWork(\'' + id + '\',{status:\'pending\'})">↩ 復原</button>';
+  }else{
+    html += '<button class="btn-sm btn-undo" onclick="updateWork(\'' + id + '\',{status:\'notified\'})">↩ 復原</button>';
+  }
+  html += '<button class="btn-sm btn-del" onclick="deleteWork(\'' + id + '\')">刪除</button>';
+  html += '</div>';
+  return html;
+}
+
+function renderMatch(){
+  var g = getMatchGroups();
+  document.getElementById('cntCome').textContent = g.come.length;
+  document.getElementById('cntNoCome').textContent = g.nocome.length;
+  document.getElementById('rosterCount').textContent = Object.keys(roster).length;
+
+  function buildTable(list, showRoster){
+    if(!list.length) return '<div class="empty">目前沒有資料</div>';
+    var html = '<table><tr><th>小朋友</th><th>作品・老師</th><th class="hide-m">' + (showRoster ? '近期課程' : '登記課程') + '</th><th>狀態／操作</th></tr>';
+    list.forEach(function(item){
+      var w = item.w;
+      var courseInfo = showRoster && item.rosterInfo
+        ? esc((item.rosterInfo.course || '') + (item.rosterInfo.time ? ' ' + item.rosterInfo.time : '')) || esc(w.course)
+        : esc(w.course);
+      var multi = countWorks(w.name) > 1 ? ' <span class="multi">×' + countWorks(w.name) + '件</span>' : '';
+      html += '<tr><td><div class="name">' + esc(w.name) + multi + '</div><div class="sub">' + esc(w.date || '') + '</div></td>' +
+        '<td>' + typeBadge(w.type) + '<br>' + teacherBadge(w.teacher) + '</td>' +
+        '<td class="hide-m"><span class="sub">' + (courseInfo || '—') + '</span></td>' +
+        '<td>' + statusBadge(w.status) + actionBtns(item.id, w) + '</td></tr>';
+    });
+    return html + '</table>';
+  }
+  document.getElementById('listCome').innerHTML = buildTable(g.come, true);
+  document.getElementById('listNoCome').innerHTML = buildTable(g.nocome, false);
+}
+
+/* ---------- 領取追蹤 ---------- */
+function renderTrack(){
+  var kw = normName(document.getElementById('searchName').value);
+  var ids = Object.keys(works).filter(function(id){
+    var w = works[id];
+    if(statusFilter !== 'all' && w.status !== statusFilter) return false;
+    if(typeFilter !== 'all' && w.type !== typeFilter) return false;
+    if(teacherFilter !== 'all' && (w.teacher || '') !== teacherFilter) return false;
+    if(kw && normName(w.name).indexOf(kw) === -1 && normName(w.teacher || '').indexOf(kw) === -1) return false;
+    return true;
+  });
+  ids.sort(function(a,b){
+    var order = { pending: 0, notified: 1, taken: 2 };
+    var d = order[works[a].status] - order[works[b].status];
+    return d !== 0 ? d : works[a].name.localeCompare(works[b].name, 'zh-Hant');
+  });
+  var el = document.getElementById('trackList');
+  if(!ids.length){ el.innerHTML = '<div class="empty">沒有符合的作品紀錄</div>'; return; }
+  var html = '<table><tr><th>小朋友</th><th>作品・老師</th><th class="hide-m">課程</th><th>狀態／操作</th></tr>';
+  ids.forEach(function(id){
+    var w = works[id];
+    var multi = countWorks(w.name) > 1 ? ' <span class="multi">×' + countWorks(w.name) + '件</span>' : '';
+    html += '<tr><td><div class="name">' + esc(w.name) + multi + '</div><div class="sub">' + esc(w.date || '') + '</div></td>' +
+      '<td>' + typeBadge(w.type) + '<br>' + teacherBadge(w.teacher) + '</td>' +
+      '<td class="hide-m"><span class="sub">' + (esc(w.course) || '—') + '</span></td>' +
+      '<td>' + statusBadge(w.status) + actionBtns(id, w) + '</td></tr>';
+  });
+  el.innerHTML = html + '</table>';
+}
+
+/* ---------- 統計 ---------- */
+function renderStats(){
+  var all = 0, p = 0, n = 0, t = 0;
+  Object.keys(works).forEach(function(id){
+    all++;
+    var s = works[id].status;
+    if(s === 'taken') t++;
+    else if(s === 'notified') n++;
+    else p++;
+  });
+  document.getElementById('stAll').textContent = all;
+  document.getElementById('stPending').textContent = p;
+  document.getElementById('stNotified').textContent = n;
+  document.getElementById('stTaken').textContent = t;
+}
+
+function renderAll(){
+  renderStats();
+  renderMatch();
+  renderTeacherChips();
+  renderTrack();
+  renderTeacherDatalist();
+}
+
+/* ---------- 匯出 ---------- */
+function downloadCSV(filename, rows){
+  var csv = '\uFEFF' + rows.map(function(r){
+    return r.map(function(c){ return '"' + String(c == null ? '' : c).replace(/"/g,'""') + '"'; }).join(',');
+  }).join('\n');
+  var blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportNotifyList(){
+  var g = getMatchGroups();
+  if(!g.nocome.length){ toast('沒有需要通知的名單'); return; }
+  var rows = [['姓名','作品類型','老師','登記課程','整理日期','狀態']];
+  g.nocome.forEach(function(item){
+    var w = item.w;
+    rows.push([w.name, w.type === 'clay' ? '黏土' : '繪畫', w.teacher || '', w.course || '', w.date || '', w.status === 'notified' ? '已通知' : '待處理']);
+  });
+  downloadCSV('作品通知名單_' + todayStr() + '.csv', rows);
+  toast('已匯出通知名單');
+}
+function exportAllCSV(){
+  var ids = Object.keys(works);
+  if(!ids.length){ toast('沒有作品資料'); return; }
+  var rows = [['姓名','作品類型','老師','課程','整理日期','狀態','備註']];
+  var stName = { pending: '待處理', notified: '已通知', taken: '已領取' };
+  ids.forEach(function(id){
+    var w = works[id];
+    rows.push([w.name, w.type === 'clay' ? '黏土' : '繪畫', w.teacher || '', w.course || '', w.date || '', stName[w.status] || w.status, w.note || '']);
+  });
+  downloadCSV('作品總表_' + todayStr() + '.csv', rows);
+  toast('已匯出作品總表');
+}
+
+/* ---------- 啟動 ---------- */
+document.getElementById('regDate').value = todayStr();
+initFirebase();
+renderAll();
+</script>
+</body>
+</html>
