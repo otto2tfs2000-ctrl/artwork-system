@@ -132,6 +132,9 @@ tr:last-child td{border-bottom:none}
 }
 .roster-info{font-size:13px;color:var(--ink-soft);margin-bottom:8px}
 .roster-info b{color:var(--ink)}
+.s-result{margin-top:10px;padding:9px 12px;border-radius:10px;font-size:14px}
+.s-result.found{background:var(--ok-bg);color:var(--ink);border:1px solid var(--ok)}
+.s-result.none{background:var(--pending-bg);color:var(--ink-soft);border:1px solid var(--line)}
 @media(max-width:640px){
   .stats{grid-template-columns:repeat(4,1fr)}
   .stat .num{font-size:20px}
@@ -150,17 +153,16 @@ tr:last-child td{border-bottom:none}
 <div class="wrap">
   <!-- 統計 -->
   <div class="stats">
-    <div class="stat s-all" onclick="gotoTrack('all')"><div class="num" id="stAll">0</div><div class="lbl">總作品</div></div>
-    <div class="stat s-pending" onclick="gotoTrack('pending')"><div class="num" id="stPending">0</div><div class="lbl">待處理</div></div>
-    <div class="stat s-notified" onclick="gotoTrack('notified')"><div class="num" id="stNotified">0</div><div class="lbl">已通知</div></div>
-    <div class="stat s-taken" onclick="gotoTrack('taken')"><div class="num" id="stTaken">0</div><div class="lbl">已領取</div></div>
+    <div class="stat s-all"><div class="num" id="stAll">0</div><div class="lbl">總作品</div></div>
+    <div class="stat s-pending"><div class="num" id="stPending">0</div><div class="lbl">待處理</div></div>
+    <div class="stat s-notified"><div class="num" id="stNotified">0</div><div class="lbl">已通知</div></div>
+    <div class="stat s-taken"><div class="num" id="stTaken">0</div><div class="lbl">已領取</div></div>
   </div>
 
   <!-- 分頁 -->
   <div class="tabs">
     <div class="tab active" data-page="register" onclick="switchTab('register')">📝 作品登記</div>
     <div class="tab" data-page="match" onclick="switchTab('match')">🔍 名單比對</div>
-    <div class="tab" data-page="track" onclick="switchTab('track')">📋 領取追蹤</div>
   </div>
 
   <!-- ============ 作品登記 ============ -->
@@ -219,8 +221,19 @@ tr:last-child td{border-bottom:none}
     </div>
 
     <div class="card">
+      <h2>🔍 搜尋小朋友</h2>
+      <div class="hint">直接輸入名字，馬上知道這位小朋友有沒有作品要領、在哪位老師那邊。</div>
+      <input type="text" class="search" id="matchSearch" placeholder="🔍 輸入小朋友名字…" oninput="renderMatch()" style="margin-bottom:0">
+      <div id="searchSummary"></div>
+    </div>
+
+    <div class="card">
       <div class="match-head g-come"><h2>✅ 有作品・近期會來上課</h2><span class="cnt" id="cntCome">0</span></div>
-      <div class="hint">可以直接在課堂發還、請家長確認。</div>
+      <div class="hint">可以直接在課堂發還、請家長確認。列印的清單含「已領取」空白勾選欄，依課堂分組。</div>
+      <div class="actions" style="margin-bottom:10px">
+        <button class="btn ghost btn-sm" onclick="printComeList()">🖨️ 列印勾選清單</button>
+        <button class="btn ghost btn-sm" onclick="exportComeCSV()">📤 下載 CSV</button>
+      </div>
       <div id="listCome"></div>
     </div>
 
@@ -229,55 +242,6 @@ tr:last-child td{border-bottom:none}
       <div class="hint">需要另外通知家長來取（可匯出名單發 Line）。</div>
       <button class="btn ghost btn-sm" style="margin:0 0 10px" onclick="exportNotifyList()">📤 匯出通知名單 CSV</button>
       <div id="listNoCome"></div>
-    </div>
-  </div>
-
-  <!-- ============ 領取追蹤 ============ -->
-  <div class="page" id="page-track">
-    <div class="card">
-      <h2>🖨️ 列印領取清單</h2>
-      <div class="hint">依「整理日期」篩選要印的作品，印出的表格含「已領取」空白勾選欄，可現場紙本打勾。清單會依老師分組排序，對應實體作品疊。</div>
-      <div class="row">
-        <div>
-          <label>範圍</label>
-          <select id="printMode" onchange="togglePrintInputs()">
-            <option value="date">指定日期</option>
-            <option value="month">指定月份</option>
-            <option value="all">全部作品</option>
-          </select>
-        </div>
-        <div id="printDateWrap">
-          <label>日期</label>
-          <input type="date" id="printDate">
-        </div>
-        <div id="printMonthWrap" style="display:none">
-          <label>月份</label>
-          <input type="month" id="printMonth">
-        </div>
-      </div>
-      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-weight:500">
-        <input type="checkbox" id="printPendingOnly" checked style="width:auto"> 只列「未領取」的作品（待處理＋已通知）
-      </label>
-      <button class="btn" onclick="printList()">🖨️ 產生列印清單</button>
-    </div>
-
-    <div class="card">
-      <h2>作品領取追蹤</h2>
-      <div class="chiprow" id="statusChips">
-        <div class="chip active" data-f="all" onclick="setFilter('all')">全部</div>
-        <div class="chip" data-f="pending" onclick="setFilter('pending')">待處理</div>
-        <div class="chip" data-f="notified" onclick="setFilter('notified')">已通知</div>
-        <div class="chip" data-f="taken" onclick="setFilter('taken')">已領取</div>
-      </div>
-      <div class="chiprow">
-        <div class="chip active" data-t="all" onclick="setTypeFilter('all')">全部類型</div>
-        <div class="chip" data-t="paint" onclick="setTypeFilter('paint')">🎨 繪畫</div>
-        <div class="chip" data-t="clay" onclick="setTypeFilter('clay')">🟤 黏土</div>
-      </div>
-      <div class="chiprow" id="teacherChips"></div>
-      <input type="text" class="search" id="searchName" placeholder="🔍 搜尋姓名…" oninput="renderTrack()">
-      <div id="trackList"></div>
-      <button class="btn ghost" onclick="exportAllCSV()">📤 匯出全部作品 CSV</button>
     </div>
   </div>
 </div>
@@ -296,11 +260,8 @@ var firebaseConfig = {
 
 var db = null;
 var fbReady = false;
-var works = {};    // {id: {name, type, course, date, note, status, createdAt, notifiedAt, takenAt}}
-var roster = {};   // {id: {name, course, time}}
-var statusFilter = 'all';
-var typeFilter = 'all';
-var teacherFilter = 'all';
+var works = {};    // {id: {name, type, teacher, course, date, note, status, createdAt, notifiedAt, takenAt}}
+var roster = {};   // {id: {name, course, time, date, teacher}}
 
 /* 同一個小朋友（未領取）共有幾件作品 */
 function countWorks(name){
@@ -398,25 +359,6 @@ function switchTab(page){
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.toggle('active', t.dataset.page === page); });
   document.querySelectorAll('.page').forEach(function(p){ p.classList.toggle('active', p.id === 'page-' + page); });
 }
-function gotoTrack(filter){
-  switchTab('track');
-  setFilter(filter);
-}
-function setFilter(f){
-  statusFilter = f;
-  document.querySelectorAll('#statusChips .chip').forEach(function(c){ c.classList.toggle('active', c.dataset.f === f); });
-  renderTrack();
-}
-function setTypeFilter(t){
-  typeFilter = t;
-  document.querySelectorAll('.chip[data-t]').forEach(function(c){ c.classList.toggle('active', c.dataset.t === t); });
-  renderTrack();
-}
-function setTeacherFilter(t){
-  teacherFilter = t;
-  renderTeacherChips();
-  renderTrack();
-}
 function getTeachers(){
   var set = {};
   Object.keys(works).forEach(function(id){
@@ -424,20 +366,6 @@ function getTeachers(){
     if(t) set[t] = true;
   });
   return Object.keys(set).sort(function(a,b){ return a.localeCompare(b, 'zh-Hant'); });
-}
-function renderTeacherChips(){
-  var teachers = getTeachers();
-  var el = document.getElementById('teacherChips');
-  if(!teachers.length){ el.innerHTML = ''; return; }
-  var html = '<div class="chip' + (teacherFilter === 'all' ? ' active' : '') + '" onclick="setTeacherFilter(\'all\')">全部老師</div>';
-  teachers.forEach(function(t){
-    var c = teacherColor(t);
-    var active = teacherFilter === t;
-    html += '<div class="chip' + (active ? ' active' : '') + '"' +
-      (active ? '' : ' style="background:' + c[0] + ';color:' + c[1] + ';border-color:' + c[0] + '"') +
-      ' onclick="setTeacherFilter(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + esc(t) + '</div>';
-  });
-  el.innerHTML = html;
 }
 function renderTeacherDatalist(){
   var dl = document.getElementById('teacherList');
@@ -534,6 +462,7 @@ function detectColumns(rows){
           nameCol: j,
           courseCol: findCol(/課程|班別|課別|科目/),
           timeCol: timeCol,
+          dateCol: findCol(/^日期$|上課日/),
           typeCol: findCol(/類型|作品/),
           teacherCol: findCol(/^老師$|教師|授課/),
           noteCol: findCol(/備註|說明/),
@@ -543,7 +472,7 @@ function detectColumns(rows){
     }
   }
   // 沒有標題列：照預設欄位順序
-  return { headerRow: -1, nameCol: 0, courseCol: -1, timeCol: -1, typeCol: -1, teacherCol: -1, noteCol: -1, absentCol: -1 };
+  return { headerRow: -1, nameCol: 0, courseCol: -1, timeCol: -1, dateCol: -1, typeCol: -1, teacherCol: -1, noteCol: -1, absentCol: -1 };
 }
 function cellOf(row, col){ return col >= 0 ? (row[col] || '') : ''; }
 /* 清理小朋友名字的註記：
@@ -590,7 +519,10 @@ function addRosterRows(rows){
     var name = normName(r[0]);
     if(!name || existing[name]) return;
     existing[name] = true;
-    saveRosterItem(genId() + 'r' + i, { name: name, course: r[1] || '', time: r[2] || '' });
+    saveRosterItem(genId() + 'r' + i, {
+      name: name, course: r[1] || '', time: r[2] || '',
+      date: r[3] || '', teacher: r[4] || ''
+    });
     added++;
   });
   renderAll();
@@ -621,7 +553,9 @@ function importRosterCSV(input){
       mapped.push([
         name,
         m.courseCol >= 0 ? cellOf(r, m.courseCol) : (m.headerRow < 0 ? (r[1] || '') : ''),
-        m.timeCol >= 0 ? cellOf(r, m.timeCol) : (m.headerRow < 0 ? (r[2] || '') : '')
+        m.timeCol >= 0 ? cellOf(r, m.timeCol) : (m.headerRow < 0 ? (r[2] || '') : ''),
+        m.dateCol >= 0 ? cellOf(r, m.dateCol) : '',
+        m.teacherCol >= 0 ? cellOf(r, m.teacherCol).trim() : ''
       ]);
     });
     var added = addRosterRows(mapped);
@@ -735,6 +669,26 @@ function statusBadge(s){
   if(s === 'notified') return '<span class="badge st-notified">已通知</span>';
   return '<span class="badge st-pending">待處理</span>';
 }
+/* 「7/4（六）2-3歲 黏土 10:00 - 10:50 AM｜花花老師」格式的分組標題 */
+function weekdayZh(dstr){
+  var d = new Date(String(dstr).slice(0, 10).replace(/-/g, '/'));
+  if(isNaN(d.getTime())) return '';
+  return '日一二三四五六'.charAt(d.getDay());
+}
+function groupLabel(ri){
+  ri = ri || {};
+  var parts = [];
+  var dRaw = String(ri.date || '').slice(0, 10); // YYYY-MM-DD
+  if(dRaw && /\d{4}-\d{2}-\d{2}/.test(dRaw)){
+    var wd = weekdayZh(dRaw);
+    parts.push(parseInt(dRaw.slice(5, 7), 10) + '/' + parseInt(dRaw.slice(8, 10), 10) + (wd ? '（' + wd + '）' : ''));
+  }
+  parts.push(ri.course || '未分類');
+  if(ri.time) parts.push(ri.time);
+  var label = esc(parts.join('　'));
+  if(ri.teacher) label += '｜<b>' + esc(ri.teacher) + '</b>';
+  return label;
+}
 function actionBtns(id, w){
   var html = '<div class="actions">';
   html += '<button class="btn-sm btn-edit" onclick="startEdit(\'' + id + '\')">✏️</button>';
@@ -754,9 +708,32 @@ function actionBtns(id, w){
 
 function renderMatch(){
   var g = getMatchGroups();
-  document.getElementById('cntCome').textContent = g.come.length;
-  document.getElementById('cntNoCome').textContent = g.nocome.length;
+  var kw = normName((document.getElementById('matchSearch') || {}).value || '');
+
+  // 搜尋過濾（比對頁兩個區塊都套用）
+  var comeAll = g.come, nocomeAll = g.nocome;
+  var come = kw ? comeAll.filter(function(it){ return normName(it.w.name).indexOf(kw) >= 0; }) : comeAll;
+  var nocome = kw ? nocomeAll.filter(function(it){ return normName(it.w.name).indexOf(kw) >= 0; }) : nocomeAll;
+
+  document.getElementById('cntCome').textContent = kw ? come.length + ' / ' + comeAll.length : comeAll.length;
+  document.getElementById('cntNoCome').textContent = kw ? nocome.length + ' / ' + nocomeAll.length : nocomeAll.length;
   document.getElementById('rosterCount').textContent = Object.keys(roster).length;
+
+  // 搜尋摘要：一句話回答「有沒有作品要領」
+  var summary = document.getElementById('searchSummary');
+  if(!kw){
+    summary.innerHTML = '';
+  }else{
+    var total = come.length + nocome.length;
+    if(total === 0){
+      summary.innerHTML = '<div class="s-result none">❌ 沒有待領作品（或已全部領取）</div>';
+    }else{
+      var msg = '✅ 找到 <b>' + total + '</b> 件待領作品';
+      if(come.length) msg += '，其中 <b>' + come.length + '</b> 件近期上課可課堂發還';
+      if(nocome.length) msg += '，<b>' + nocome.length + '</b> 件需通知家長來取';
+      summary.innerHTML = '<div class="s-result found">' + msg + '</div>';
+    }
+  }
 
   function rowHtml(item, showRoster){
     var w = item.w;
@@ -773,72 +750,43 @@ function renderMatch(){
   }
   var tableHead = '<tr><th>小朋友</th><th>作品・老師</th><th class="hide-m">課程</th><th>狀態／操作</th></tr>';
 
-  // ✅ 會來上課：依「課程時段」分組，課前照組挑作品
-  var come = document.getElementById('listCome');
-  if(!g.come.length){
-    come.innerHTML = '<div class="empty">目前沒有資料</div>';
+  // ✅ 會來上課：依「日期（星期）＋時段＋老師班」分組，課前照組挑作品
+  var comeEl = document.getElementById('listCome');
+  if(!come.length){
+    comeEl.innerHTML = '<div class="empty">' + (kw ? '搜尋不到符合的作品' : '目前沒有資料') + '</div>';
   }else{
-    var groups = {};
-    g.come.forEach(function(item){
-      var ri = item.rosterInfo || {};
-      var key = ((ri.time || '') + '｜' + (ri.course || '未分類')).trim();
-      (groups[key] = groups[key] || []).push(item);
-    });
-    var keys = Object.keys(groups).sort();
+    var groups = groupComeItems(come);
     var html = '';
-    keys.forEach(function(key){
-      var parts = key.split('｜');
-      var label = (parts[1] || '未分類') + (parts[0] ? '　' + parts[0] : '');
-      html += '<div class="grouphead">📌 ' + esc(label) + '<span class="gcnt">' + groups[key].length + ' 位</span></div>';
+    groups.keys.forEach(function(key){
+      var grp = groups.map[key];
+      html += '<div class="grouphead">📌 ' + groupLabel(grp.ri) + '<span class="gcnt">' + grp.items.length + ' 位</span></div>';
       html += '<table>' + tableHead;
-      groups[key].forEach(function(item){ html += rowHtml(item, true); });
+      grp.items.forEach(function(item){ html += rowHtml(item, true); });
       html += '</table>';
     });
-    come.innerHTML = html;
+    comeEl.innerHTML = html;
   }
 
   // ⚠️ 近期沒課：維持依姓名排序的單一清單
-  var nocome = document.getElementById('listNoCome');
-  if(!g.nocome.length){
-    nocome.innerHTML = '<div class="empty">目前沒有資料</div>';
+  var nocomeEl = document.getElementById('listNoCome');
+  if(!nocome.length){
+    nocomeEl.innerHTML = '<div class="empty">' + (kw ? '搜尋不到符合的作品' : '目前沒有資料') + '</div>';
   }else{
     var html2 = '<table>' + tableHead;
-    g.nocome.forEach(function(item){ html2 += rowHtml(item, false); });
-    nocome.innerHTML = html2 + '</table>';
+    nocome.forEach(function(item){ html2 += rowHtml(item, false); });
+    nocomeEl.innerHTML = html2 + '</table>';
   }
 }
-
-/* ---------- 領取追蹤 ---------- */
-function renderTrack(){
-  var kw = normName(document.getElementById('searchName').value);
-  var ids = Object.keys(works).filter(function(id){
-    var w = works[id];
-    if(statusFilter !== 'all' && w.status !== statusFilter) return false;
-    if(typeFilter !== 'all' && w.type !== typeFilter) return false;
-    if(teacherFilter !== 'all' && (w.teacher || '') !== teacherFilter) return false;
-    if(kw && normName(w.name).indexOf(kw) === -1 && normName(w.teacher || '').indexOf(kw) === -1) return false;
-    return true;
+/* 依「日期＋時段＋課程＋老師班」分組（排序鍵可直接字典排序） */
+function groupComeItems(list){
+  var map = {};
+  list.forEach(function(item){
+    var ri = item.rosterInfo || {};
+    var sortKey = (ri.date || '9999') + '|' + (ri.time || '') + '|' + (ri.course || '') + '|' + (ri.teacher || '');
+    if(!map[sortKey]){ map[sortKey] = { items: [], ri: ri }; }
+    map[sortKey].items.push(item);
   });
-  ids.sort(function(a,b){
-    var order = { pending: 0, notified: 1, taken: 2 };
-    var d = order[works[a].status] - order[works[b].status];
-    return d !== 0 ? d : works[a].name.localeCompare(works[b].name, 'zh-Hant');
-  });
-  var el = document.getElementById('trackList');
-  if(!ids.length){ el.innerHTML = '<div class="empty">沒有符合的作品紀錄</div>'; return; }
-  var html = '<table><tr><th>小朋友</th><th>作品・老師</th><th class="hide-m">課程</th><th>狀態／操作</th></tr>';
-  ids.forEach(function(id){
-    var w = works[id];
-    if(id === editingId){
-      html += '<tr>' + editForm(id, w) + '</tr>';
-      return;
-    }
-    html += '<tr><td>' + nameMark(w.name) + '<div class="sub">' + esc(w.date || '') + '</div></td>' +
-      '<td>' + typeBadge(w.type) + '<br>' + teacherBadge(w.teacher) + '</td>' +
-      '<td class="hide-m"><span class="sub">' + (esc(w.course) || '—') + '</span></td>' +
-      '<td>' + statusBadge(w.status) + actionBtns(id, w) + '</td></tr>';
-  });
-  el.innerHTML = html + '</table>';
+  return { map: map, keys: Object.keys(map).sort() };
 }
 
 /* ---------- 統計 ---------- */
@@ -860,8 +808,6 @@ function renderStats(){
 function renderAll(){
   renderStats();
   renderMatch();
-  renderTeacherChips();
-  renderTrack();
   renderTeacherDatalist();
 }
 
@@ -888,84 +834,58 @@ function exportNotifyList(){
   downloadCSV('作品通知名單_' + todayStr() + '.csv', rows);
   toast('已匯出通知名單');
 }
-function exportAllCSV(){
-  var ids = Object.keys(works);
-  if(!ids.length){ toast('沒有作品資料'); return; }
-  var rows = [['姓名','作品類型','老師','課程','整理日期','狀態','備註']];
-  var stName = { pending: '待處理', notified: '已通知', taken: '已領取' };
-  ids.forEach(function(id){
-    var w = works[id];
-    rows.push([w.name, w.type === 'clay' ? '黏土' : '繪畫', w.teacher || '', w.course || '', w.date || '', stName[w.status] || w.status, w.note || '']);
+/* 下載「會來上課」清單 CSV（依課堂排序） */
+function exportComeCSV(){
+  var g = getMatchGroups();
+  if(!g.come.length){ toast('目前沒有會來上課的待領作品'); return; }
+  var groups = groupComeItems(g.come);
+  var stName = { pending: '待處理', notified: '已通知' };
+  var rows = [['上課日期','星期','課程','時間','上課老師','姓名','作品類型','作品老師','狀態']];
+  groups.keys.forEach(function(key){
+    var grp = groups.map[key];
+    var ri = grp.ri || {};
+    var dRaw = String(ri.date || '').slice(0, 10);
+    grp.items.forEach(function(item){
+      var w = item.w;
+      rows.push([
+        dRaw, dRaw ? weekdayZh(dRaw) : '', ri.course || '', ri.time || '', ri.teacher || '',
+        w.name, w.type === 'clay' ? '黏土' : '繪畫', w.teacher || '', stName[w.status] || ''
+      ]);
+    });
   });
-  downloadCSV('作品總表_' + todayStr() + '.csv', rows);
-  toast('已匯出作品總表');
+  downloadCSV('會來上課待領作品_' + todayStr() + '.csv', rows);
+  toast('已下載 CSV');
 }
 
-/* ---------- 列印領取清單 ---------- */
-function togglePrintInputs(){
-  var mode = document.getElementById('printMode').value;
-  document.getElementById('printDateWrap').style.display = mode === 'date' ? '' : 'none';
-  document.getElementById('printMonthWrap').style.display = mode === 'month' ? '' : 'none';
-}
-function printList(){
-  var mode = document.getElementById('printMode').value;
-  var pendingOnly = document.getElementById('printPendingOnly').checked;
-  var rangeLabel = '全部作品';
-  if(mode === 'date'){
-    var d = document.getElementById('printDate').value;
-    if(!d){ toast('請先選擇日期'); return; }
-    rangeLabel = d;
-  }
-  if(mode === 'month'){
-    var mo = document.getElementById('printMonth').value;
-    if(!mo){ toast('請先選擇月份'); return; }
-    rangeLabel = mo.replace('-', ' 年 ') + ' 月';
-  }
-  var ids = Object.keys(works).filter(function(id){
-    var w = works[id];
-    if(pendingOnly && w.status === 'taken') return false;
-    if(mode === 'date') return (w.date || '') === document.getElementById('printDate').value;
-    if(mode === 'month') return (w.date || '').slice(0, 7) === document.getElementById('printMonth').value;
-    return true;
-  });
-  if(!ids.length){ toast('此範圍內沒有作品'); return; }
+/* ---------- 列印「會來上課」勾選清單 ---------- */
+function printComeList(){
+  var g = getMatchGroups();
+  if(!g.come.length){ toast('目前沒有會來上課的待領作品'); return; }
+  var groups = groupComeItems(g.come);
+  var stName = { pending: '待處理', notified: '已通知' };
 
-  // 依老師 → 姓名排序（對應實體作品疊）
-  ids.sort(function(a, b){
-    var ta = works[a].teacher || '～未填老師', tb = works[b].teacher || '～未填老師';
-    if(ta !== tb) return ta.localeCompare(tb, 'zh-Hant');
-    return works[a].name.localeCompare(works[b].name, 'zh-Hant');
-  });
+  var html = '<div class="p-head"><div class="p-title">🎨 玩劇寶貝｜課堂發還作品清單</div>' +
+    '<div class="p-sub">共 ' + g.come.length + ' 件（依課堂分組）　　列印時間：' + new Date().toLocaleString('zh-TW') + '</div></div>';
 
-  var stName = { pending: '待處理', notified: '已通知', taken: '已領取' };
-  var html = '<div class="p-head"><div class="p-title">🎨 玩劇寶貝｜作品領取清單</div>' +
-    '<div class="p-sub">範圍：' + esc(rangeLabel) + (pendingOnly ? '（未領取）' : '') +
-    '　共 ' + ids.length + ' 件　　列印時間：' + new Date().toLocaleString('zh-TW') + '</div></div>';
-
-  var curTeacher = null;
-  ids.forEach(function(id){
-    var w = works[id];
-    var t = w.teacher || '未填老師';
-    if(t !== curTeacher){
-      if(curTeacher !== null) html += '</tbody></table>';
-      curTeacher = t;
-      var cnt = ids.filter(function(x){ return (works[x].teacher || '未填老師') === t; }).length;
-      html += '<div class="p-group">👩‍🏫 ' + esc(t) + '（' + cnt + ' 件）</div>';
-      html += '<table class="p-table"><thead><tr>' +
-        '<th style="width:70px">已領取</th><th>小朋友</th><th style="width:60px">作品</th>' +
-        '<th>課程</th><th style="width:80px">整理日期</th><th style="width:70px">狀態</th>' +
-        '</tr></thead><tbody>';
-    }
-    html += '<tr>' +
-      '<td class="p-check"><span class="pbox"></span></td>' +
-      '<td class="p-name">' + esc(w.name) + '</td>' +
-      '<td>' + (w.type === 'clay' ? '黏土' : '繪畫') + '</td>' +
-      '<td>' + esc(w.course || '') + '</td>' +
-      '<td>' + esc(w.date || '') + '</td>' +
-      '<td>' + (stName[w.status] || '') + '</td>' +
-      '</tr>';
+  groups.keys.forEach(function(key){
+    var grp = groups.map[key];
+    html += '<div class="p-group">📌 ' + groupLabel(grp.ri) + '（' + grp.items.length + ' 件）</div>';
+    html += '<table class="p-table"><thead><tr>' +
+      '<th style="width:70px">已領取</th><th>小朋友</th><th style="width:60px">作品</th>' +
+      '<th>作品老師</th><th style="width:70px">狀態</th>' +
+      '</tr></thead><tbody>';
+    grp.items.forEach(function(item){
+      var w = item.w;
+      html += '<tr>' +
+        '<td class="p-check"><span class="pbox"></span></td>' +
+        '<td class="p-name">' + esc(w.name) + '</td>' +
+        '<td>' + (w.type === 'clay' ? '黏土' : '繪畫') + '</td>' +
+        '<td>' + esc(w.teacher || '') + '</td>' +
+        '<td>' + (stName[w.status] || '') + '</td>' +
+        '</tr>';
+    });
+    html += '</tbody></table>';
   });
-  html += '</tbody></table>';
 
   document.getElementById('printArea').innerHTML = html;
   window.print();
