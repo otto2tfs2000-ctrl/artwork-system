@@ -135,6 +135,9 @@ tr:last-child td{border-bottom:none}
 .s-result{margin-top:10px;padding:9px 12px;border-radius:10px;font-size:14px}
 .s-result.found{background:var(--ok-bg);color:var(--ink);border:1px solid var(--ok)}
 .s-result.none{background:var(--pending-bg);color:var(--ink-soft);border:1px solid var(--line)}
+.cdate{display:inline-block;background:var(--paint-bg);color:var(--paint);font-size:12px;font-weight:900;padding:1px 7px;border-radius:6px}
+.m-only{display:none}
+@media(max-width:640px){.m-only{display:inline-block}}
 @media(max-width:640px){
   .stats{grid-template-columns:repeat(4,1fr)}
   .stat .num{font-size:20px}
@@ -675,14 +678,18 @@ function weekdayZh(dstr){
   if(isNaN(d.getTime())) return '';
   return '日一二三四五六'.charAt(d.getDay());
 }
+/* 「7/4（六）」格式的日期標籤 */
+function dateLabel(dstr){
+  var dRaw = String(dstr || '').slice(0, 10); // YYYY-MM-DD
+  if(!dRaw || !/\d{4}-\d{2}-\d{2}/.test(dRaw)) return '';
+  var wd = weekdayZh(dRaw);
+  return parseInt(dRaw.slice(5, 7), 10) + '/' + parseInt(dRaw.slice(8, 10), 10) + (wd ? '（' + wd + '）' : '');
+}
 function groupLabel(ri){
   ri = ri || {};
   var parts = [];
-  var dRaw = String(ri.date || '').slice(0, 10); // YYYY-MM-DD
-  if(dRaw && /\d{4}-\d{2}-\d{2}/.test(dRaw)){
-    var wd = weekdayZh(dRaw);
-    parts.push(parseInt(dRaw.slice(5, 7), 10) + '/' + parseInt(dRaw.slice(8, 10), 10) + (wd ? '（' + wd + '）' : ''));
-  }
+  var dl = dateLabel(ri.date);
+  if(dl) parts.push(dl);
   parts.push(ri.course || '未分類');
   if(ri.time) parts.push(ri.time);
   var label = esc(parts.join('　'));
@@ -740,10 +747,17 @@ function renderMatch(){
     if(item.id === editingId){
       return '<tr>' + editForm(item.id, w) + '</tr>';
     }
-    var courseInfo = showRoster && item.rosterInfo
-      ? esc((item.rosterInfo.course || '') + (item.rosterInfo.time ? ' ' + item.rosterInfo.time : '')) || esc(w.course)
-      : esc(w.course);
-    return '<tr><td>' + nameMark(w.name) + '<div class="sub">' + esc(w.date || '') + '</div></td>' +
+    var courseInfo, dl = '';
+    if(showRoster && item.rosterInfo){
+      var ri = item.rosterInfo;
+      dl = dateLabel(ri.date);
+      courseInfo = (dl ? '<span class="cdate">' + esc(dl) + '</span> ' : '') +
+        esc(((ri.course || '') + (ri.time ? ' ' + ri.time : '')).trim() || w.course || '');
+    }else{
+      courseInfo = esc(w.course);
+    }
+    var mobileDate = dl ? ' <span class="cdate m-only">' + esc(dl) + '</span>' : '';
+    return '<tr><td>' + nameMark(w.name) + '<div class="sub">' + esc(w.date || '') + mobileDate + '</div></td>' +
       '<td>' + typeBadge(w.type) + '<br>' + teacherBadge(w.teacher) + '</td>' +
       '<td class="hide-m"><span class="sub">' + (courseInfo || '—') + '</span></td>' +
       '<td>' + statusBadge(w.status) + actionBtns(item.id, w) + '</td></tr>';
