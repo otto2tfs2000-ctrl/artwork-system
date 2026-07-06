@@ -41,7 +41,7 @@ h1 .dot.b{background:var(--paint)} h1 .dot.o{background:var(--clay)}
 #connStatus.off{background:#FBE7E4;color:var(--danger)}
 .wrap{max-width:1080px;margin:0 auto;padding:14px 12px}
 /* 統計卡 */
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:10px 8px;text-align:center;cursor:pointer;transition:transform .1s}
 .stat:active{transform:scale(.97)}
 .stat .num{font-size:24px;font-weight:900}
@@ -76,6 +76,10 @@ button{font-family:inherit;cursor:pointer;border:none;border-radius:10px;font-we
 .btn-del{background:#fff;color:var(--danger);border:1px solid #EBC9C4}
 .btn-undo{background:#fff;color:var(--ink-soft);border:1px solid var(--line)}
 .btn-edit{background:#fff;color:var(--ink);border:1px solid var(--line)}
+.btn-return{background:#EDE7F8;color:#6B4FA3;border:1px solid #6B4FA3}
+.st-returned{background:#EDE7F8;color:#6B4FA3}
+.stat.s-returned .num{color:#6B4FA3}
+.b-fixed{background:#fff;border:1.5px dashed currentColor}
 .editbox{background:var(--pending-bg);border:1px solid var(--line);border-radius:10px;padding:10px}
 .editbox label{font-size:12px;margin:4px 0 3px}
 .editbox input{font-size:14px;padding:7px 9px}
@@ -138,8 +142,9 @@ tr:last-child td{border-bottom:none}
 .cdate{display:inline-block;background:var(--paint-bg);color:var(--paint);font-size:12px;font-weight:900;padding:1px 7px;border-radius:6px}
 .m-only{display:none}
 @media(max-width:640px){.m-only{display:inline-block}}
+.warnbox{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn);border-radius:10px;padding:10px 12px;font-size:13px;font-weight:700;line-height:1.6;margin-bottom:10px}
 @media(max-width:640px){
-  .stats{grid-template-columns:repeat(4,1fr)}
+  .stats{grid-template-columns:repeat(5,1fr)}
   .stat .num{font-size:20px}
   th.hide-m,td.hide-m{display:none}
 }
@@ -160,6 +165,7 @@ tr:last-child td{border-bottom:none}
     <div class="stat s-pending"><div class="num" id="stPending">0</div><div class="lbl">待處理</div></div>
     <div class="stat s-notified"><div class="num" id="stNotified">0</div><div class="lbl">已通知</div></div>
     <div class="stat s-taken"><div class="num" id="stTaken">0</div><div class="lbl">已領取</div></div>
+    <div class="stat s-returned"><div class="num" id="stReturned">0</div><div class="lbl">歸還老師</div></div>
   </div>
 
   <!-- 分頁 -->
@@ -204,6 +210,19 @@ tr:last-child td{border-bottom:none}
       <div class="hint">支援 <b>CSV 和 Excel（.xlsx）</b>。有標題列時自動對應「姓名、類型、老師、課程、備註」欄；沒有標題列則照此順序讀。類型欄含「黏土」判定為黏土，其餘視為繪畫。<b>每一列、每次匯入都是一件獨立作品</b>——分兩批匯入同一個名字，就是兩件作品，系統會用螢光色標注同名者。</div>
       <div class="filebox">
         <input type="file" id="csvWorks" accept=".csv,.txt,.xlsx,.xls" onchange="importWorksCSV(this)">
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📚 固定班老師名單</h2>
+      <div class="roster-info">目前對照表：<b id="fixedCount">0</b> 位學員 <button class="btn-sm btn-del" style="margin-left:8px" onclick="clearFixed()">清空對照表</button></div>
+      <div class="hint">可直接匯入<b>學位表 Excel</b>（自動解析老師、課程與橫向學員欄位，含「學位」的工作表只取第一個），或貼上文字：一行一班 <b>老師名：學員1、學員2</b>，一行一人 <b>學員,老師</b>。同一位學員上多位老師的課會各存一筆，作品會依類型（繪畫/黏土）自動對到正確的班，並以 ✓ 標示。</div>
+      <textarea id="fixedInput" placeholder="例如：&#10;花花老師：王小明、陳小美、林小寶&#10;球球老師：張大衛、李庭妤&#10;或&#10;徐佳淳,企鵝老師"></textarea>
+      <div class="row">
+        <button class="btn" onclick="importFixedText()">＋ 加入對照表</button>
+        <div class="filebox" style="margin-top:10px;flex:2">
+          <input type="file" id="csvFixed" accept=".csv,.txt,.xlsx,.xls" onchange="importFixedCSV(this)">
+        </div>
       </div>
     </div>
   </div>
@@ -265,12 +284,14 @@ var db = null;
 var fbReady = false;
 var works = {};    // {id: {name, type, teacher, course, date, note, status, createdAt, notifiedAt, takenAt}}
 var roster = {};   // {id: {name, course, time, date, teacher}}
+var fixed = {};    // {id: {name, teacher}} 固定班老師對照表
 
 /* 同一個小朋友（未領取）共有幾件作品 */
 function countWorks(name){
   var n = normName(name), c = 0;
   Object.keys(works).forEach(function(id){
-    if(normName(works[id].name) === n && works[id].status !== 'taken') c++;
+    var st = works[id].status;
+    if(normName(works[id].name) === n && st !== 'taken' && st !== 'returned') c++;
   });
   return c;
 }
@@ -315,6 +336,11 @@ function initFirebase(){
     });
 
     // 上課名單
+    db.ref('artwork/fixed').on('value', function(snap){
+      fixed = snap.val() || {};
+      renderAll();
+    });
+
     db.ref('artwork/roster').on('value', function(snap){
       roster = snap.val() || {};
       renderAll();
@@ -413,16 +439,17 @@ function readSheet(input, cb){
   var isExcel = /\.(xlsx|xls)$/i.test(file.name);
   var reader = new FileReader();
   reader.onload = function(e){
-    var rows = [];
+    var rows = [], sheets = [];
     try{
       if(isExcel){
         var wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
-        // 讀取所有工作表並合併（例如依課程分頁的出席表）
+        // 讀取所有工作表並合併（例如依課程分頁的出席表），同時保留各表
         wb.SheetNames.forEach(function(sn){
-          var sheetRows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' });
-          sheetRows.forEach(function(r){
-            rows.push(r.map(function(c){ return String(c == null ? '' : c).trim(); }));
-          });
+          var sheetRows = XLSX.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '' })
+            .map(function(r){ return r.map(function(c){ return String(c == null ? '' : c).trim(); }); })
+            .filter(function(r){ return r.some(function(c){ return c; }); });
+          sheets.push({ name: sn, rows: sheetRows });
+          sheetRows.forEach(function(r){ rows.push(r); });
         });
       }else{
         var text = e.target.result.replace(/^\uFEFF/, ''); // 去 BOM
@@ -437,7 +464,8 @@ function readSheet(input, cb){
       return;
     }
     rows = rows.filter(function(r){ return r.some(function(c){ return c; }); });
-    cb(rows);
+    if(!sheets.length){ sheets = [{ name: '', rows: rows }]; }
+    cb(rows, sheets);
     input.value = '';
   };
   if(isExcel){ reader.readAsArrayBuffer(file); }
@@ -482,7 +510,8 @@ function cellOf(row, col){ return col >= 0 ? (row[col] || '') : ''; }
    「張芯甯-花」→ 張芯甯、「陳俙臻8Y-蘋果」→ 陳俙臻、
    「謝承伸5.10」→ 謝承伸、「彭道晟9」→ 彭道晟 */
 function cleanChildName(s){
-  var n = (s || '').split(/[-–—]/)[0];
+  var n = String(s || '').split(/[\r\n]/)[0]; // 去掉第二行註記（如「預計退費」）
+  n = n.split(/[-–—]/)[0];
   n = n.replace(/[0-9]+([\/.．][0-9]+)*\s*[YyＹ歲]?\s*$/, '');
   return n.trim();
 }
@@ -568,6 +597,173 @@ function importRosterCSV(input){
   });
 }
 
+/* ---------- 固定班老師對照表 ---------- */
+function saveFixedItem(id, obj){
+  fixed[id] = obj;
+  if(db){ db.ref('artwork/fixed/' + id).set(obj); }
+}
+function clearFixed(){
+  if(!confirm('確定清空「固定班老師對照表」？（不影響作品與名單）')) return;
+  fixed = {};
+  if(db){ db.ref('artwork/fixed').remove(); }
+  renderAll();
+  toast('對照表已清空');
+}
+/* 加入或更新：pairs = [姓名, 老師, 課程(選填)]
+   同一位學員可有多筆（不同課程/老師），同「姓名+老師+課程」則更新不重複 */
+function addFixedPairs(pairs){
+  var byKey = {};
+  Object.keys(fixed).forEach(function(id){
+    var f = fixed[id];
+    byKey[normName(f.name) + '|' + (f.teacher || '') + '|' + (f.course || '')] = id;
+  });
+  var added = 0;
+  pairs.forEach(function(p, i){
+    var name = normName(p[0]);
+    var teacher = cleanTeacherName(p[1]);
+    var course = (p[2] || '').trim();
+    if(!name || !teacher) return;
+    var key = name + '|' + teacher + '|' + course;
+    var id = byKey[key] || (genId() + 'f' + i);
+    byKey[key] = id;
+    saveFixedItem(id, { name: name, teacher: teacher, course: course });
+    added++;
+  });
+  renderAll();
+  return added;
+}
+/* 老師名清理：去 emoji 與符號（「星星⭐」→「星星」） */
+function cleanTeacherName(s){
+  return String(s || '').replace(/[^\u4e00-\u9fffA-Za-z0-9]/g, '').trim();
+}
+/* 課程是否對應作品類型（繪畫作品找畫類班、黏土作品找黏土班） */
+function courseMatchesType(course, type){
+  if(!course) return false;
+  if(type === 'clay') return /黏土|捏塑/.test(course);
+  if(type === 'paint') return /畫|美術/.test(course);
+  return false;
+}
+function importFixedText(){
+  var raw = document.getElementById('fixedInput').value.trim();
+  if(!raw){ toast('請先貼上名單'); return; }
+  var pairs = [];
+  raw.split(/\r?\n/).forEach(function(line){
+    line = line.trim();
+    if(!line) return;
+    if(/[：:]/.test(line)){
+      // 「老師：學員1、學員2」格式
+      var seg = line.split(/[：:]/);
+      var teacher = seg[0].trim();
+      seg.slice(1).join(':').split(/[、,，\s]+/).forEach(function(n){
+        if(n.trim()) pairs.push([n.trim(), teacher]);
+      });
+    }else{
+      // 「學員,老師」格式
+      var parts = line.split(/[,，\t]/).map(function(x){ return x.trim(); });
+      if(parts[0] && parts[1]) pairs.push([parts[0], parts[1]]);
+    }
+  });
+  var added = addFixedPairs(pairs);
+  document.getElementById('fixedInput').value = '';
+  toast('✅ 對照表加入/更新 ' + added + ' 位學員');
+}
+/* 學位表版面偵測：標題列同時有「老師、課程、備註」，學生names橫向排在備註欄之後 */
+function parseSeatTableSheet(rows){
+  var headerIdx = -1, teacherCol = -1, courseCol = -1, noteCol = -1;
+  for(var i = 0; i < Math.min(rows.length, 5); i++){
+    var tc = rows[i].indexOf('老師'), cc = rows[i].indexOf('課程'), nc = rows[i].indexOf('備註');
+    if(tc >= 0 && cc >= 0 && nc >= 0){
+      headerIdx = i; teacherCol = tc; courseCol = cc; noteCol = nc;
+      break;
+    }
+  }
+  if(headerIdx < 0) return null;
+  // 學生欄：備註之後每隔一欄一個名字（名字、狀態字母交錯），遇到「候補」欄停止
+  var header = rows[headerIdx];
+  var stuCols = [];
+  for(var c = noteCol + 1; c < header.length; c += 2){
+    if(/候補/.test(header[c] || '') || /候補/.test(header[c + 1] || '')) break;
+    stuCols.push(c);
+  }
+  var pairs = [];
+  rows.forEach(function(r, i){
+    if(i <= headerIdx) return;
+    var teacher = cleanTeacherName(r[teacherCol]);
+    if(!teacher) return;
+    var course = String(r[courseCol] || '').replace(/[\r\n]/g, '').trim();
+    stuCols.forEach(function(c){
+      var name = cleanChildName(r[c]);
+      if(name && /[\u4e00-\u9fffA-Za-z]/.test(name)){
+        pairs.push([name, teacher, course]);
+      }
+    });
+  });
+  return pairs;
+}
+function importFixedCSV(input){
+  readSheet(input, function(rows, sheets){
+    if(!rows.length){ toast('檔案沒有資料'); return; }
+    // 有「學位」命名的工作表時只取第一個（避免混入其他月份或雜項分頁）
+    var target = rows;
+    for(var i = 0; i < sheets.length; i++){
+      if(/學位/.test(sheets[i].name)){ target = sheets[i].rows; break; }
+    }
+    // 先嘗試學位表版面
+    var pairs = parseSeatTableSheet(target);
+    if(pairs && pairs.length){
+      var added = addFixedPairs(pairs);
+      toast('✅ 學位表匯入 ' + added + ' 筆（學員×課程對應）');
+      return;
+    }
+    // 後援：一般「姓名/老師」直欄格式
+    var m = detectColumns(rows);
+    if(m.teacherCol < 0){ toast('⚠️ 檔案裡找不到「老師」欄，也不是學位表格式'); return; }
+    pairs = [];
+    rows.forEach(function(r, i){
+      if(i <= m.headerRow) return;
+      if(/姓名|學生|依屬|名字|name/i.test(r[m.nameCol])) return;
+      var name = cleanChildName(r[m.nameCol]);
+      if(!name || !/[\u4e00-\u9fffA-Za-z]/.test(name)) return;
+      pairs.push([name, cellOf(r, m.teacherCol).trim(), m.courseCol >= 0 ? cellOf(r, m.courseCol) : '']);
+    });
+    var added2 = addFixedPairs(pairs);
+    toast('✅ 對照表匯入/更新 ' + added2 + ' 位學員');
+  });
+}
+/* 查詢小朋友的固定班（容錯比對）；type 提供時優先找對應課程的班 */
+function getFixedEntries(name, type){
+  var all = [];
+  Object.keys(fixed).forEach(function(id){
+    if(namesMatch(name, fixed[id].name)) all.push(fixed[id]);
+  });
+  if(!all.length) return [];
+  if(type){
+    var typed = all.filter(function(f){ return courseMatchesType(f.course, type); });
+    if(typed.length) return typed;
+  }
+  return all;
+}
+function getFixedTeacher(name, type){
+  var list = getFixedEntries(name, type);
+  return list.length ? list[0].teacher : '';
+}
+function fixedBadge(name, type){
+  var list = getFixedEntries(name, type);
+  if(!list.length) return '';
+  // 依老師去重，最多顯示兩個
+  var seen = {}, out = '';
+  for(var i = 0; i < list.length && Object.keys(seen).length < 2; i++){
+    var f = list[i];
+    if(seen[f.teacher]) continue;
+    seen[f.teacher] = true;
+    var c = teacherColor(f.teacher);
+    var matched = type && courseMatchesType(f.course, type);
+    out += '<br><span class="badge b-fixed" style="color:' + c[1] + ';border-color:' + c[1] + '">📚 固定班 ' +
+      esc(f.teacher) + (f.course ? '·' + esc(f.course) : '') + (matched ? ' ✓' : '') + '</span>';
+  }
+  return out;
+}
+
 /* ---------- 比對 ---------- */
 /* 容錯比對：完全相同，或一方包含另一方（處理「王小明(六A)」「魏可希Coco」這類註記） */
 function namesMatch(a, b){
@@ -584,7 +780,7 @@ function getMatchGroups(){
   var come = [], nocome = [];
   Object.keys(works).forEach(function(id){
     var w = works[id];
-    if(w.status === 'taken') return; // 已領取不再列入比對
+    if(w.status === 'taken' || w.status === 'returned') return; // 已領取/已歸還不再列入比對
     var hit = null;
     for(var i = 0; i < rosterList.length; i++){
       if(namesMatch(w.name, rosterList[i].name)){ hit = rosterList[i]; break; }
@@ -669,6 +865,7 @@ function nameMark(name){
 }
 function statusBadge(s){
   if(s === 'taken') return '<span class="badge st-taken">已領取</span>';
+  if(s === 'returned') return '<span class="badge st-returned">歸還老師</span>';
   if(s === 'notified') return '<span class="badge st-notified">已通知</span>';
   return '<span class="badge st-pending">待處理</span>';
 }
@@ -699,18 +896,30 @@ function groupLabel(ri){
 function actionBtns(id, w){
   var html = '<div class="actions">';
   html += '<button class="btn-sm btn-edit" onclick="startEdit(\'' + id + '\')">✏️</button>';
-  if(w.status === 'pending'){
-    html += '<button class="btn-sm btn-notify" onclick="updateWork(\'' + id + '\',{status:\'notified\',notifiedAt:Date.now()})">📣 已通知</button>';
+  if(w.status === 'pending' || w.status === 'notified'){
+    if(w.status === 'pending'){
+      html += '<button class="btn-sm btn-notify" onclick="updateWork(\'' + id + '\',{status:\'notified\',notifiedAt:Date.now()})">📣 已通知</button>';
+    }
     html += '<button class="btn-sm btn-take" onclick="updateWork(\'' + id + '\',{status:\'taken\',takenAt:Date.now()})">✔ 已領取</button>';
-  }else if(w.status === 'notified'){
-    html += '<button class="btn-sm btn-take" onclick="updateWork(\'' + id + '\',{status:\'taken\',takenAt:Date.now()})">✔ 已領取</button>';
-    html += '<button class="btn-sm btn-undo" onclick="updateWork(\'' + id + '\',{status:\'pending\'})">↩ 復原</button>';
+    html += '<button class="btn-sm btn-return" onclick="returnToTeacher(\'' + id + '\')">📚 歸還老師</button>';
+    if(w.status === 'notified'){
+      html += '<button class="btn-sm btn-undo" onclick="updateWork(\'' + id + '\',{status:\'pending\'})">↩ 復原</button>';
+    }
   }else{
-    html += '<button class="btn-sm btn-undo" onclick="updateWork(\'' + id + '\',{status:\'notified\'})">↩ 復原</button>';
+    // taken / returned：可復原回待處理
+    html += '<button class="btn-sm btn-undo" onclick="updateWork(\'' + id + '\',{status:\'pending\'})">↩ 復原</button>';
   }
   html += '<button class="btn-sm btn-del" onclick="deleteWork(\'' + id + '\')">刪除</button>';
   html += '</div>';
   return html;
+}
+/* 歸還老師：優先記錄固定班老師，沒有就記整理作品的老師 */
+function returnToTeacher(id){
+  var w = works[id];
+  if(!w) return;
+  var ft = getFixedTeacher(w.name, w.type) || w.teacher || '';
+  updateWork(id, { status: 'returned', returnedTo: ft, returnedAt: Date.now() });
+  toast('📚 已標記歸還' + (ft ? '給 ' + ft : '老師'));
 }
 
 function renderMatch(){
@@ -758,7 +967,7 @@ function renderMatch(){
     }
     var mobileDate = dl ? ' <span class="cdate m-only">' + esc(dl) + '</span>' : '';
     return '<tr><td>' + nameMark(w.name) + '<div class="sub">' + esc(w.date || '') + mobileDate + '</div></td>' +
-      '<td>' + typeBadge(w.type) + '<br>' + teacherBadge(w.teacher) + '</td>' +
+      '<td>' + typeBadge(w.type) + '<br>' + teacherBadge(w.teacher) + fixedBadge(w.name, w.type) + '</td>' +
       '<td class="hide-m"><span class="sub">' + (courseInfo || '—') + '</span></td>' +
       '<td>' + statusBadge(w.status) + actionBtns(item.id, w) + '</td></tr>';
   }
@@ -766,11 +975,17 @@ function renderMatch(){
 
   // ✅ 會來上課：依「日期（星期）＋時段＋老師班」分組，課前照組挑作品
   var comeEl = document.getElementById('listCome');
+  // 名單為舊格式（沒有日期資訊）時提示重新匯入
+  var rosterIds = Object.keys(roster);
+  var hasDateInfo = rosterIds.some(function(id){ return roster[id].date; });
+  var oldFormatWarn = (rosterIds.length && !hasDateInfo)
+    ? '<div class="warnbox">⚠️ 目前的名單是舊格式，沒有「上課日期／老師班」資訊。請先按上方「清空名單」，再重新匯入出席檔（Excel），分組就會顯示日期（星期）和老師班。</div>'
+    : '';
   if(!come.length){
-    comeEl.innerHTML = '<div class="empty">' + (kw ? '搜尋不到符合的作品' : '目前沒有資料') + '</div>';
+    comeEl.innerHTML = oldFormatWarn + '<div class="empty">' + (kw ? '搜尋不到符合的作品' : '目前沒有資料') + '</div>';
   }else{
     var groups = groupComeItems(come);
-    var html = '';
+    var html = oldFormatWarn;
     groups.keys.forEach(function(key){
       var grp = groups.map[key];
       html += '<div class="grouphead">📌 ' + groupLabel(grp.ri) + '<span class="gcnt">' + grp.items.length + ' 位</span></div>';
@@ -805,11 +1020,12 @@ function groupComeItems(list){
 
 /* ---------- 統計 ---------- */
 function renderStats(){
-  var all = 0, p = 0, n = 0, t = 0;
+  var all = 0, p = 0, n = 0, t = 0, rt = 0;
   Object.keys(works).forEach(function(id){
     all++;
     var s = works[id].status;
     if(s === 'taken') t++;
+    else if(s === 'returned') rt++;
     else if(s === 'notified') n++;
     else p++;
   });
@@ -817,6 +1033,9 @@ function renderStats(){
   document.getElementById('stPending').textContent = p;
   document.getElementById('stNotified').textContent = n;
   document.getElementById('stTaken').textContent = t;
+  document.getElementById('stReturned').textContent = rt;
+  var fc = document.getElementById('fixedCount');
+  if(fc) fc.textContent = Object.keys(fixed).length;
 }
 
 function renderAll(){
@@ -853,8 +1072,8 @@ function exportComeCSV(){
   var g = getMatchGroups();
   if(!g.come.length){ toast('目前沒有會來上課的待領作品'); return; }
   var groups = groupComeItems(g.come);
-  var stName = { pending: '待處理', notified: '已通知' };
-  var rows = [['上課日期','星期','課程','時間','上課老師','姓名','作品類型','作品老師','狀態']];
+  var stName = { pending: '待處理', notified: '已通知', returned: '歸還老師' };
+  var rows = [['上課日期','星期','課程','時間','上課老師','姓名','作品類型','作品老師','固定班老師','狀態']];
   groups.keys.forEach(function(key){
     var grp = groups.map[key];
     var ri = grp.ri || {};
@@ -863,7 +1082,7 @@ function exportComeCSV(){
       var w = item.w;
       rows.push([
         dRaw, dRaw ? weekdayZh(dRaw) : '', ri.course || '', ri.time || '', ri.teacher || '',
-        w.name, w.type === 'clay' ? '黏土' : '繪畫', w.teacher || '', stName[w.status] || ''
+        w.name, w.type === 'clay' ? '黏土' : '繪畫', w.teacher || '', getFixedTeacher(w.name, w.type), stName[w.status] || ''
       ]);
     });
   });
@@ -876,7 +1095,7 @@ function printComeList(){
   var g = getMatchGroups();
   if(!g.come.length){ toast('目前沒有會來上課的待領作品'); return; }
   var groups = groupComeItems(g.come);
-  var stName = { pending: '待處理', notified: '已通知' };
+  var stName = { pending: '待處理', notified: '已通知', returned: '歸還老師' };
 
   var html = '<div class="p-head"><div class="p-title">🎨 玩劇寶貝｜課堂發還作品清單</div>' +
     '<div class="p-sub">共 ' + g.come.length + ' 件（依課堂分組）　　列印時間：' + new Date().toLocaleString('zh-TW') + '</div></div>';
@@ -886,7 +1105,7 @@ function printComeList(){
     html += '<div class="p-group">📌 ' + groupLabel(grp.ri) + '（' + grp.items.length + ' 件）</div>';
     html += '<table class="p-table"><thead><tr>' +
       '<th style="width:70px">已領取</th><th>小朋友</th><th style="width:60px">作品</th>' +
-      '<th>作品老師</th><th style="width:70px">狀態</th>' +
+      '<th>作品老師</th><th>固定班</th><th style="width:70px">狀態</th>' +
       '</tr></thead><tbody>';
     grp.items.forEach(function(item){
       var w = item.w;
@@ -895,6 +1114,7 @@ function printComeList(){
         '<td class="p-name">' + esc(w.name) + '</td>' +
         '<td>' + (w.type === 'clay' ? '黏土' : '繪畫') + '</td>' +
         '<td>' + esc(w.teacher || '') + '</td>' +
+        '<td>' + esc(getFixedTeacher(w.name, w.type)) + '</td>' +
         '<td>' + (stName[w.status] || '') + '</td>' +
         '</tr>';
     });
